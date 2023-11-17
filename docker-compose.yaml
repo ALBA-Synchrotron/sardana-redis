@@ -1,0 +1,22 @@
+# 
+# Docker compose file for Sardana development with TANGO database and database device server
+#
+# Defines:
+#   - sardana_dev: A development sardana machine with all dependencies already installed
+#   - tangodb: MariaDB database with TANGO schema
+#   - databaseds: TANGO database device server
+#   - tangotest: A useful DeviceServer to do tests.
+
+version: '3'
+
+services:
+  redis7:
+    image: redis/redis-stack-server:7.2.0-v5
+    hostname: redis7
+    container_name: redis7
+    ports:
+      - 6379:6379
+    volumes:
+      - ./blredis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf --loglevel warning --protected-mode no --loadmodule /opt/redis-stack/lib/redisearch.so --loadmodule /opt/redis-stack/lib/rejson.so 
+    restart: on-failure
