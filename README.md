@@ -25,27 +25,21 @@ Then we would be able to connect to this database using the host localhost:6379
 
 ## Sardana Redis BlissData 1.0 Recorder
 
-### Data structure
-(TODO)
+### Installation
+To use the [Sardana Redis BlissData 1.0 Recorder](./sardana_redis-10/recorder/redis_bliss_recorder.py),  a Redis database and the module [Blissdata 1.0](https://gitlab.esrf.fr/bliss/bliss/-/tree/blissdata-1.0.0rc0/blissdata) are required.
+
+A local redisDB can be started from the provided docker compose file. The blredis.conf configuration will be used and the DB will be exposed in `localhost:6379`.
+
+Install the plugin from the setup.py file and edit the Sardana Macroserver RecorderPath property to point to the folder where the RedisBlissRecorder is.
+
+Then the recorder can be activated by setting it in spock with the command `senv DataRecorder "RedisBlissRecorder"`
+
+By default, `localhost:6379` will be used as the redisDB but a custom url can be set in the RedisURL sardana environemnt variable, e.g. `senv RedisURL "redis://localhost:6379"`
+
+
 ### Usage
-To use the [Sardana Redis BlissData 1.0 Recorder](./sardana_redis-10/recorder/redis_bliss_recorder.py), the module [Blissdata 1.0](https://gitlab.esrf.fr/bliss/bliss/-/tree/blissdata-1.0.0rc0/blissdata) is required. 
 
-Modify if necessary the url:port of the RedisDB and then edit the Sardana Macroserver RecorderPath property to point to the folder where the RedisBlissRecorder is.
 
-Then we can activate the Recorder by setting it in spock with 
-```python
-Door_ms_red_1 [2]: senv DataRecorder "RedisBlissRecorder"
-Door_ms_red_1 [1]: lsenv
-                  Name                                                          Value    Type
- --------------------- -------------------------------------------------------------- -------
-             _SAR_DEMO   {'controllers': ['motctrl03', 'ctctrl03', 'zerodctrl03 [...]    dict
-          _ViewOptions   {'ShowCtrlAxis': False, 'OutputBlock': False, 'PosForm [...]    dict
-          ActiveMntGrp                                                     test_redis     str
-   DataCompressionRank                                                              1     int
-          DataRecorder                                             RedisBlissRecorder     str
-       PreScanSnapshot                                                             []    list
-               ScanDir                                         /workspace/tests_scans     str
-              ScanFile                                             ['testRedisRec01']    list
-           ScanHistory   [{'startts': 1689178084.7259643, 'endts': 1689178089.9 [...]    list
-                ScanID                                                            131     int
-```
+
+
+### Bliss Nexus writer service

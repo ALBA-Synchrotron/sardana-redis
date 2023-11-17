@@ -1,8 +1,9 @@
 from sardana.macroserver.scan.recorder import DataRecorder
 from sardana.macroserver.msexception import UnknownEnv
 
-from sardana_redis.utils.sardana_redis_utils import set_redis_db
+from sardana_redis.utils.sardana_redis_utils import get_data_store
 from blissdata.redis_engine.scan import Scan, ScanState
+from blissdata.redis_engine.store import DataStore
 from blissdata.redis_engine.encoding.numeric import NumericStreamEncoder
 from blissdata.redis_engine.encoding.json import JsonStreamEncoder
 import os
@@ -28,7 +29,7 @@ class RedisBlissRecorder(DataRecorder):
             macro.getMacroServer().set_env("RedisURL", "redis://localhost:6379")
             redisURL = "redis://localhost:6379"
 
-        set_redis_db(redisURL)
+        data_store = get_data_store(redisURL)
 
         scanDir = macro.getMacroServer().get_env("ScanDir")
         scanFile = macro.getMacroServer().get_env("ScanFile")[0]
@@ -72,9 +73,9 @@ class RedisBlissRecorder(DataRecorder):
             'writer_options': {'chunk_options': {}, 'separate_scan_files': None},
             'nexuswriter': {}
         }
-
+        
         # create scan in the database
-        self.scan = Scan.create(scan_id, info=scan_info)
+        self.scan = data_store.create_scan(scan_id, info=scan_info)
 
     def _startRecordList(self, recordlist):
 
