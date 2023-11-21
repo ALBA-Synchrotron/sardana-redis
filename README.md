@@ -10,7 +10,7 @@ A local redisDB can be started from the provided [docker compose file](./docker-
 Install the plugin from the setup.py file and edit the Sardana Macroserver RecorderPath property to point to the folder where the RedisBlissRecorder is.
 
 ### Usage
-The recorder can be activated by setting it in spock with the command `senv DataRecorder "RedisBlissRecorder"`
+The recorder can be activated by setting it in spock with the command `senv ScanRecorder "RedisBlissRecorder"`
 
 By default, `localhost:6379` will be used as the redisDB but a custom url can be set in the RedisURL sardana environemnt variable, e.g. `senv RedisURL "redis://localhost:6379"`
 
@@ -91,7 +91,7 @@ With Blissdata is easy to extract the data from the Redis DB so it could be used
 
 The TANGO device is launched with the command `NexusWriterService` but before it needs to be registered and linked to the session where it will be used. In the current Proof of Concept, the session name used by the sardana recorder is "test_session" so this is the name of the session propety that needs to be set to the device.
 
-![](./docs/redis_screenshot.png)
+![](./docs/writer_tango_device.png)
 
 When everything is ready, start the device server 
 
