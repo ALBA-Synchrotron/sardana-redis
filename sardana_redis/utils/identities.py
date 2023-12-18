@@ -13,6 +13,12 @@ class ALBAIdentityModel(HashModel):
     name: str = Field(index=True)
     number: int = Field(index=True)
     data_policy: str = Field(index=True)
+    
+    # data policy
+    session: Optional[str] = Field(index=True)
+    proposal: Optional[str] = Field(index=True)
+    collection: Optional[str] = Field(index=True)
+    dataset: Optional[str] = Field(index=True)
 
     # Without data policy
     path: Optional[str] = Field(index=True)

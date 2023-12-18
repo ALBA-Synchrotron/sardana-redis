@@ -1,12 +1,6 @@
 # 
-# Docker compose file for Sardana development with TANGO database and database device server
+# Docker compose file for Redis DB server to be used with Sardana
 #
-# Defines:
-#   - sardana_dev: A development sardana machine with all dependencies already installed
-#   - tangodb: MariaDB database with TANGO schema
-#   - databaseds: TANGO database device server
-#   - tangotest: A useful DeviceServer to do tests.
-
 version: '3'
 
 services:

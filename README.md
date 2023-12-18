@@ -9,6 +9,24 @@ A local redisDB can be started from the provided [docker compose file](./docker-
 
 Install the plugin from the setup.py file and edit the Sardana Macroserver RecorderPath property to point to the folder where the RedisBlissRecorder is.
 
+After initializing the database (if not done manually it will be after first Sardana scan), run the memory_tracker process to monitor the database and clear space when necessary:
+
+```bash
+$> memory_tracker --redis-url redis://localhost:6379
+2023-12-14 17:42:35,121 INFO: INIT | Redis max. memory: 4GB
+2023-12-14 17:42:35,121 INFO: INIT | Mem. usage to trigger cleanup: 80% (3.2GB)
+2023-12-14 17:42:35,121 INFO: INIT | Protected history length: 180 seconds
+2023-12-14 17:42:35,146 INFO: Scan esrf:scan:01HHMHGD8J5HH0BPMW9P6K5XQF is terminated, expiration set to 7 days, 0:00:00 seconds
+2023-12-14 17:42:35,148 INFO: Scan esrf:scan:01HHMJFBYYY730099KMZJV395T is terminated, expiration set to 7 days, 0:00:00 seconds
+2023-12-14 17:42:35,149 INFO: Scan esrf:scan:01HHMJ1Z81HB230TRJ3PQ8BFKE is terminated, expiration set to 7 days, 0:00:00 seconds
+2023-12-14 17:42:35,150 INFO: Scan esrf:scan:01HHMJ3EPH9VKX0V1TEBPBJAET is terminated, expiration set to 7 days, 0:00:00 seconds
+2023-12-14 17:42:35,152 INFO: Scan esrf:scan:01HHMJBBPCXW3Y93GJ7M9FGG8D is terminated, expiration set to 7 days, 0:00:00 seconds
+2023-12-14 17:42:35,153 INFO: Scan esrf:scan:01HHMJ07B2YNJA5658QSZ3GQ9R is terminated, expiration set to 7 days, 0:00:00 seconds
+2023-12-14 17:42:35,154 INFO: Scan esrf:scan:01HHMHW2W61C921M6PRPT0HJHQ is terminated, expiration set to 7 days, 0:00:00 seconds
+2023-12-14 17:42:35,156 INFO: Scan esrf:scan:01HHMDM5EGB58BK4XG31NP43SB is terminated, expiration set to 7 days, 0:00:00 seconds
+2023-12-14 17:42:35,156 INFO: Memory usage: 2.531MB
+```
+
 ### Usage
 The recorder can be activated by setting it in spock with the command `senv ScanRecorder "RedisBlissRecorder"`
 

@@ -2,12 +2,11 @@ from sardana.macroserver.scan.recorder import DataRecorder
 from sardana.macroserver.msexception import UnknownEnv
 
 from sardana_redis.utils.sardana_redis_utils import get_data_store
-from blissdata.redis_engine.scan import Scan, ScanState
-from blissdata.redis_engine.store import DataStore
 from blissdata.redis_engine.encoding.numeric import NumericStreamEncoder
-from blissdata.redis_engine.encoding.json import JsonStreamEncoder
+from blissdata.schemas.scan_info import ScanInfoDict, DeviceDict, ChainDict, ChannelDict
 import os
 import datetime
+import sardana
 
 
 class RedisBlissRecorder(DataRecorder):
@@ -15,7 +14,7 @@ class RedisBlissRecorder(DataRecorder):
     Redis database Blissdata 1.0 recorder
 
     Put the directory where this file resides in RecorderPath MacroServer tango property
-    and then senv ScanRecorder "['RedisBlissRecorder']
+    and then senv ScanRecorder "['RedisBlissRecorder']"
     """
 
     def __init__(self, *args, **kwargs):
@@ -32,48 +31,76 @@ class RedisBlissRecorder(DataRecorder):
         data_store = get_data_store(redisURL)
 
         scanDir = macro.getMacroServer().get_env("ScanDir")
-        scanFile = macro.getMacroServer().get_env("ScanFile")[0]
+        scanFile_env = macro.getMacroServer().get_env('ScanFile')
+        allowed_extensions = ['.h5', '.hdf5']
+        if isinstance(scanFile_env, str):
+            scanFile = scanFile_env
+        else:
+            # search the element that has the .h5 or .hdf5 extension
+            scanFile = next(
+                (f for f in scanFile_env if f.endswith(tuple(allowed_extensions))),
+                None,
+            )
+        # TODO check for more ScanFile extensions to set the writer? (nexus, spec...)
+        if scanFile is None:
+            raise ValueError(
+                "No valid ScanFile found in ScanFile Sardana environment variable"
+            )
+
         scanPath = os.path.join(scanDir, scanFile)
         scanID = macro.getMacroServer().get_env("ScanID")
 
-        # TODO check ScanFile extensions to set the writer? (nexus, spec...)
         # TODO take some info about proposalnr, user, dataset, etc.. from env?
+        try:
+            info_env = macro.getMacroServer().get_env("NexusExperimentInfo")
+            proposal = info_env['proposal_id']
+        except (UnknownEnv, KeyError):
+            self.warning(
+                "NexusExperimentInfo Sardana environment variable not found")
+            proposal = "None"
 
-        # The identity model we use is ESRFIdentityModel in blissdata.redis_engine.models
-        # It defines the json fields indexed by RediSearch
         scan_id = {
             "name": macro.name,
             "number": scanID,
             "data_policy": "no_policy",
             "session": "test_session",
             "path": scanPath,
-            # 'proposal': 'id002311',
+            'proposal': proposal,
             # 'collection': 'sample',
             # 'dataset': '0001',
         }
 
-        scan_info = {
-            "name": macro.name,
-            'save': True,
-            'data_writer': 'nexus',
-            "filename": scanPath,
-            "acquisition_chain": {},
-            'npoints': macro.nb_points,
-            'count_time': macro.integ_time,
-            'scan_nb': scanID,
-            'sleep_time': macro.latency_time,
-            'stab_time': None,
-            'start': [-1],
-            'start_time': datetime.datetime.now().astimezone().isoformat(),
-            'stop': [1],
-            'technique': {'@NX_class': 'NXcollection'},
-            'title': macro.macro_command,
-            'type': macro._name,
-            'user_name': 'ovallcorba',
-            'writer_options': {'chunk_options': {}, 'separate_scan_files': None},
-            'nexuswriter': {}
-        }
-        
+        scan_info = ScanInfoDict(
+            acquisition_chain={},
+            channels={},
+            devices={},
+            sequence_info={},
+            group='',
+            start_time=datetime.datetime.now().astimezone().isoformat(),
+            scan_nb=scanID,
+            index_in_sequence=1,
+            retry_nb=0,
+            is_scan_sequence=False,
+            type=macro._name,
+            title=macro.macro_command,
+            npoints=macro.nb_points,
+            count_time=macro.integ_time,
+            sleep_time=macro.latency_time,
+            stab_time=None,
+            data_policy='no_policy',
+            data_writer='nexus',
+            writer_options={'chunk_options': {}, 'separate_scan_files': None},
+            publisher='Sardana',
+            publisher_version=sardana.__version__,
+            save=True,
+            session_name='demo_session',
+            user_name='tangosys',
+            plots=[],
+            _display_extra={},
+            name=macro.macro_command,
+            filename=scanPath,
+        )
+
         # create scan in the database
         self.scan = data_store.create_scan(scan_id, info=scan_info)
 
@@ -89,7 +116,6 @@ class RedisBlissRecorder(DataRecorder):
             if shape:
                 col['shape'] = [int(dim) for dim in shape]
             datadesc.append(col)
-        # self.scan.info["datadesc"] = datadesc
         datadesc_list = list(datadesc)
 
         snapshot = []
@@ -100,16 +126,15 @@ class RedisBlissRecorder(DataRecorder):
             except AttributeError:
                 data['value'] = None
             snapshot.append(data)
-        # self.scan.info['preScanSnapShot'] = snapshot
 
-        # we want to avoid import bliss (from bliss.scanning import chain)
-        # build manually the necessary dicts.
-        device_dict = {}
-        device_dict["timer"] = {'channels': []}
-        device_dict["counters"] = {'channels': [], 'metadata': {}}
-        device_dict["axis"] = {'channels': [], 'metadata': {}}
-        acq_chain_dict = {}
-        channels_dict = {}
+        # build the necessary dicts
+        devices: dict[str, DeviceDict] = {}
+        devices["timer"] = DeviceDict(channels=[], metadata={})
+        devices["counters"] = DeviceDict(channels=[], metadata={})
+        devices["axis"] = DeviceDict(channels=[], metadata={})
+
+        acq_chain: dict[str, ChainDict] = {}
+        channels: dict[str, ChannelDict] = {}
 
         # Add as metadata the full datadesc and snapshot
         snap_dict = {}
@@ -121,12 +146,7 @@ class RedisBlissRecorder(DataRecorder):
 
         self.scan.info["snapshot"] = snap_dict
         self.scan.info["datadesc"] = ddesc_dict
-        self.scan.info['scan_meta_categories'] = ['positioners',
-                                                  'nexuswriter',
-                                                  'instrument',
-                                                  'technique',
-                                                  'snapshot',
-                                                  'datadesc']
+        self.scan.info['scan_meta_categories'] = ['snapshot', 'datadesc']
 
         # declare the streams in the scan (all Numeric in our test, TODO: consider references, 1d,...)
         self.stream_list = {}
@@ -147,10 +167,10 @@ class RedisBlissRecorder(DataRecorder):
                 device_type = "timer"
             elif name in header["counters"]:
                 device_type = "counters"
-            device_dict[device_type]['channels'].append(label)
-            channels_dict[label] = {"device": device_type,
-                                    "dim": len(shape),
-                                    "display_name": label}
+            devices[device_type]['channels'].append(label)
+            channels[label] = ChannelDict(device=device_type,
+                                          dim=len(shape),
+                                          display_name=label)
 
             # Check dtype and shape for the type of stream to use
             encoder = NumericStreamEncoder(dtype=dtype, shape=shape)
@@ -161,14 +181,10 @@ class RedisBlissRecorder(DataRecorder):
             self.stream_list[name] = scalar_stream
 
         # this does the trick to have a valid acquisition chain
-        acq_chain_dict["axis"] = {'devices': list(device_dict.keys()),
-                                  'master': {'images': [],
-                                             'scalars': device_dict["axis"]["channels"]},
-                                  'scalars': device_dict["timer"]["channels"] + device_dict["counters"]["channels"]}
-
-        self.scan.info["devices"] = device_dict
-        self.scan.info["channels"] = channels_dict
-        self.scan.info["acquisition_chain"] = acq_chain_dict
+        acq_chain["axis"] = ChainDict(devices=list(devices.keys()))
+        self.scan.info["devices"] = devices
+        self.scan.info["channels"] = channels
+        self.scan.info["acquisition_chain"] = acq_chain
 
         self.scan.prepare()  # upload initial metadata and stream declarations
 
@@ -184,14 +200,13 @@ class RedisBlissRecorder(DataRecorder):
             except Exception as e:
                 print(e)
                 self.warning(
-                    "Error sealing stream {} not found".format(stream.name))
+                    "Error sealing stream {}".format(stream.name))
                 continue
 
         self.scan.stop()
 
-        # gather end of scan metadata if necessary
-        # self.scan.info["end_metadata"] = {"c": 123, "d": "xyz"}
-
+        self.scan.info['end_time'] = datetime.datetime.now().astimezone().isoformat()
+        self.scan.info['end_reason'] = 'SUCCESS'
         self.scan.close()  # upload final metadata
 
     def _writeRecord(self, record):
