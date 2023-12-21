@@ -3,7 +3,7 @@
 This is a Proof of Concept to use [BlissData 1.0](https://bliss.gitlab-pages.esrf.fr/bliss/master/blissdata/intro.html) as a [Sardana](https://gitlab.com/sardana-org/sardana) recorder. It consists of a basic recorder that stores the scan data (only counters for now) and which can use the Nexus Writer provided in [Bliss](https://bliss.gitlab-pages.esrf.fr/bliss/master/) to write nexus files.
 
 ### Installation
-The requirements to test the [Sardana Redis BlissData 1.0 Recorder](./sardana_redis-10/recorder/redis_bliss_recorder.py) are [Sardana](https://gitlab.com/sardana-org/sardana) (obviously), a Redis database and the [Blissdata 1.0](https://gitlab.esrf.fr/bliss/bliss/-/tree/blissdata-1.0.0rc0/blissdata) module.
+The requirements to test the [Sardana Redis BlissData 1.0 Recorder](./sardana_redis/recorder/redis_bliss_recorder.py) are [Sardana](https://gitlab.com/sardana-org/sardana) (obviously), a Redis database and the [Blissdata 1.0](https://gitlab.esrf.fr/bliss/bliss/-/tree/blissdata-1.0.0rc0/blissdata) module.
 
 A local redisDB can be started from the provided [docker compose file](./docker-compose.yaml). The [blredis.conf](./blredis.conf) configuration will be used and the DB will be exposed in `localhost:6379`.
 
@@ -132,4 +132,75 @@ Door_macroserver_1 [87]: lsenv
 Then after the scan (if the device server is running and the session is properly set), the file will be automatically written.
 
 ![](./docs/nexus_file_silx.png)
+
+
+### Basic Spec Writer Example
+
+A very simple spec writer as a writer client example is provided as a [standalone process](./sardana_redis/spec_writer/spec_writer_service.py) or as a [tango device](./sardana_redis/spec_writer/spec_writer_tango.py).
+
+After registering it to a tangoDB with <instance_name> the following properties can be defined:
+
+Three properties can be defined:
+- redis_url: Redis DB url (default='redis://localhost:6379')
+- log_level: Log level of spec_writer_service (default='INFO')
+next_scan_timeout: Timeout for get_next_scan calls. Use 0 for blocking calls. The only drawback is that blocking prevents stopping the service from the tango device at a specific moment (it will be applied after the following scan) (default=2)
+
+And it can be started normally as (e.g. specwriter instance name):
+
+```bash
+python spec_writer_tango.py specwriter -v4
+2023-12-21T17:10:51,766524+0100 INFO (spec_writer_tango.py:18) blov/spec_writer/test Initializing device...
+2023-12-21 17:10:51,766 - sardana_redis.spec_writer.spec_writer_service - INFO - Connecting to DB
+2023-12-21 17:10:51,771 - sardana_redis.spec_writer.spec_writer_service - INFO - Waiting for scan
+Ready to accept request
+Processing scan esrf:scan:01HJ6JG89DE0Z2Z2A2KMDPRM3H
+2023-12-21 17:14:26,842 - sardana_redis.spec_writer.spec_writer_service - INFO - recording into '/tmp/scans/test_spec_writer.dat'
+2023-12-21 17:14:43,680 - sardana_redis.spec_writer.spec_writer_service - WARNING - End of stream for scalar column #Pt No
+2023-12-21 17:14:43,690 - sardana_redis.spec_writer.spec_writer_service - INFO - finished recording to '/tmp/scans/test_spec_writer.dat'
+2023-12-21 17:14:43,690 - sardana_redis.spec_writer.spec_writer_service - INFO - Waiting for next scan
+```
+
+And data will be written/appended to the file in spec format:
+
+```
+#S 74 ascanct mot04 1.0 10.0 10 0.1 0.2
+#D 2023-12-21T17:14:26.605568+01:00
+#C Acquisition started at 2023-12-21T17:14:26.605568+01:00
+#O0 dcm_kev  dmot01  mot01  mot02  mot03  mot04  motLab01  motLab02
+#O1 motLab03  pd_mc  pd_oc
+#P0 0.0 0.0 0.0 0.0 0.0 10.0 -137136.0 1000.0
+#P1 2000.0 0.0 0.0
+#N 7
+#@MCA 1024
+#@CHANN 1024 0 1023 1
+#@MCA_NB 1
+#@DET_0 oned01
+#L #Pt_No  mot04  ct01  ct02  ct03  ct04  dt
+@A 2.9802322387695314e-09 3.188948758273692e-09 3.4118304746830744e-09 ...
+0 1.0 0.1 0.2 0.30000000000000004 0.4 2.0                              
+@A 2.9802322387695314e-09 3.188948758273692e-09 3.4118304746830744e-09 ...
+1 1.9 0.1 0.2 0.30000000000000004 0.4 2.3                              
+@A 2.9802322387695314e-09 3.188948758273692e-09 3.4118304746830744e-09 ...
+2 2.8 0.1 0.2 0.30000000000000004 0.4 2.5999999999999996               
+@A 2.9802322387695314e-09 3.188948758273692e-09 3.4118304746830744e-09 ...
+3 3.7 0.1 0.2 0.30000000000000004 0.4 2.8999999999999995               
+@A 2.9802322387695314e-09 3.188948758273692e-09 3.4118304746830744e-09 ...
+4 4.6 0.1 0.2 0.30000000000000004 0.4 3.1999999999999993               
+@A 2.9802322387695314e-09 3.188948758273692e-09 3.4118304746830744e-09 ...
+5 5.5 0.1 0.2 0.30000000000000004 0.4 3.499999999999999                
+@A 2.9802322387695314e-09 3.188948758273692e-09 3.4118304746830744e-09 ...
+6 6.4 0.1 0.2 0.30000000000000004 0.4 3.799999999999999                
+@A 2.9802322387695314e-09 3.188948758273692e-09 3.4118304746830744e-09 ...
+7 7.3 0.1 0.2 0.30000000000000004 0.4 4.099999999999999                
+@A 2.9802322387695314e-09 3.188948758273692e-09 3.4118304746830744e-09 ...
+8 8.2 0.1 0.2 0.30000000000000004 0.4 4.399999999999999                
+@A 2.9802322387695314e-09 3.188948758273692e-09 3.4118304746830744e-09 ...
+9 9.1 0.1 0.2 0.30000000000000004 0.4 4.699999999999998                
+@A 2.9802322387695314e-09 3.188948758273692e-09 3.4118304746830744e-09 ...
+10 10.0 0.1 0.2 0.30000000000000004 0.4 4.999999999999998
+#C Acquisition ended 2023-12-21T17:14:43.687924+01:00
+```
+
+
+
 

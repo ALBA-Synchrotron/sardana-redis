@@ -5,6 +5,7 @@ from sardana_redis.utils.sardana_redis_utils import get_data_store
 from blissdata.redis_engine.encoding.numeric import NumericStreamEncoder
 from blissdata.schemas.scan_info import ScanInfoDict, DeviceDict, ChainDict, ChannelDict
 import os
+import tango
 import datetime
 import sardana
 
@@ -27,6 +28,17 @@ class RedisBlissRecorder(DataRecorder):
         except UnknownEnv:
             macro.getMacroServer().set_env("RedisURL", "redis://localhost:6379")
             redisURL = "redis://localhost:6379"
+
+        try:
+            redisWriters = macro.getMacroServer().get_env("RedisWritersTango")
+            for writer in redisWriters:
+                writer_dev = tango.DeviceProxy(writer)
+                if writer_dev.State() == tango.DevState.ON:
+                    macro.info(" %s is ON" % writer)
+                else:
+                    macro.warning(" %s is OFF" % writer)
+        except UnknownEnv:
+            self.warning("No RedisWritersTango environment variable found")
 
         data_store = get_data_store(redisURL)
 
@@ -151,8 +163,8 @@ class RedisBlissRecorder(DataRecorder):
         # declare the streams in the scan (all Numeric in our test, TODO: consider references, 1d,...)
         self.stream_list = {}
         for elem in datadesc_list:
-            if "point_nb" in elem["name"]:
-                continue
+            # if "point_nb" in elem["name"]:
+            #     continue
 
             name = elem["name"]
             label = elem["label"]
