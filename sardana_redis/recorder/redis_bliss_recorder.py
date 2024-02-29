@@ -20,7 +20,7 @@ def scan_exists(dataset_file: str, scan_number: int) -> bool:
     if not os.path.exists(dataset_file):
         return False
     with h5py.File(dataset_file, "r", locking=False) as nxroot:
-        return f"{scan_number}.1" in nxroot
+        return "{}.1".format(scan_number) in nxroot
 
 
 def validate_scan_info(scan_info: dict) -> ScanInfoDict:
@@ -209,22 +209,22 @@ class RedisBlissRecorder(DataRecorder):
             masterfiles = {}
         else:
             proposal_file = os.path.join(
-                exp_folder, f"{proposal}_{beamline}.h5")
+                exp_folder, "{}_{}{}".format(proposal, beamline, ext))
             collection_file = os.path.join(
-                exp_folder, collection, f"{proposal}_{collection}.h5")
+                exp_folder, collection, "{}_{}{}".format(proposal, collection, ext))
             dataset_file = os.path.join(
-                exp_folder, collection, f"{collection}_{dataset_nr}", f"{collection}_{dataset_nr}.h5"
+                exp_folder, collection, "{}_{}".format(collection, dataset_nr), "{}_{}{}".format(collection, dataset_nr, ext)
             )
             while scan_exists(dataset_file, self.scan.number):
-                dataset_nr = f"{int(dataset_nr)+1:04d}"
+                dataset_nr = "{:04d}".format(int(dataset_nr)+1)
                 dataset_file = os.path.join(
                     exp_folder,
                     collection,
-                    f"{collection}_{dataset_nr}",
-                    f"{collection}_{dataset_nr}.h5",
+                    "{}_{}".format(collection, dataset_nr),
+                    "{}_{}{}".format(collection, dataset_nr, ext),
                 )
             images_path = os.path.join(
-                exp_folder, collection, f"{collection}_{dataset_nr}", f"scan{self.scan.number:04d}"
+                exp_folder, collection, "{}_{}".format(collection, dataset_nr), "scan{:04d}".format(self.scan.number)
             )
             masterfiles = {
                 "dataset": dataset_file,
