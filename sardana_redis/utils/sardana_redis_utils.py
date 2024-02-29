@@ -7,15 +7,16 @@ from sardana_redis.utils.identities import ALBAIdentityModel
 # object in the NexusWriter and the memory_tracker
 
 def get_data_store(redisURL):
-
+    
+    data_store = None
     try:
-        data_store = DataStore("redis://localhost:6379", init_db=True)  #, identity_model_cls=ALBAIdentityModel)
+        data_store = DataStore(redisURL, init_db=True, identity_model_cls=ALBAIdentityModel)
     except Exception as e:
         print(e)
         print("error initializing redis , already initialized??")
 
     try:
-        data_store = DataStore("redis://localhost:6379")  #, identity_model_cls=ALBAIdentityModel)
+        data_store = DataStore(redisURL, identity_model_cls=ALBAIdentityModel)
     except Exception as e:
         print(e)
         print("error setting redis url, already set??")
