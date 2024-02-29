@@ -13,7 +13,8 @@ import typing
 
 NX_EXP_INFO_ENV = "NexusExperimentInfo"
 TANGO_WRITERS_ENV = "RedisWritersTango"
-NX_WRITER_EXT = ['.h5', '.hdf5', '.nexus']
+NX_WRITER_ENV = "NexusWriterOpts"
+DEFAULT_NX_EXT = '.h5'
 
 
 def scan_exists(dataset_file: str, scan_number: int) -> bool:
@@ -66,17 +67,19 @@ class RedisBlissRecorder(DataRecorder):
         self.checkWriters()
         data_store = self.getRedisDataStore(redisURL)
         if data_store is None:
-            self.error(
+            self.macro.error(
                 "No Redis connection. Set RedisURL environment variable. Data will not be published")
             return
 
-        self.nexus_save = True
-        self.nx_save_single_file = True  # TODO expose option somewhere
-        scanPath = self.getScanPath()
-        # If no ScanDir or ScanFile are set (or properly set), the save flag on scan_info
-        # will be set to false
+        scanPath = self.getNexusSavingOpts()
         if scanPath is None:
+            msg = ("No valid ScanDir or Nexus ScanFile found in sardana environment\n" +
+                   "Data saving set to FALSE")
+            self.macro.warning(msg)
             self.nexus_save = False
+
+        if not self.nexus_save:
+            self.macro.info("Nexus writer saving is disabled, check {}".format(NX_WRITER_ENV))
 
         scanID = self.macro.getMacroServer().get_env("ScanID")
 
@@ -86,7 +89,7 @@ class RedisBlissRecorder(DataRecorder):
             proposal = info_env['proposal_id']
             beamline = info_env['beamline']
         except (UnknownEnv, KeyError):
-            self.warning(
+            self.macro.warning(
                 "{} Sardana environment variable not found".format(NX_EXP_INFO_ENV))
             proposal = "None"
 
@@ -132,50 +135,35 @@ class RedisBlissRecorder(DataRecorder):
                 self.macro.error(
                     "ERROR: Could not connect to RedisDB: %s" % redisURL)
             else:
-                self.macro.info("Connected to {}".format(data_store))
+                self.macro.info("Connected to {}".format(redisURL))
+                self.macro.debug("data_store={}".format(data_store))
         except Exception as e:
             self.macro.error(
                 "ERROR: Could not connect to RedisDB: %s" % redisURL)
         return data_store
 
-    def getScanPath(self):
+    def getNexusSavingOpts(self):
+        scanPath = None
         try:
             self.scanDir = self.macro.getMacroServer().get_env("ScanDir")
-            scanFile_env = self.macro.getMacroServer().get_env('ScanFile')
-            nexus_writer_opts = self.macro.getMacroServer().get_env(NX_WRITER_ENV)
-
-            scanPath = None
-
-            if self.scanDir is None or scanFile_env is None:
-                return scanPath
-
-            if isinstance(scanFile_env, str):
-                self.scanFile = scanFile_env
-            else:
-                # search the element that has the NX writer ext as it may be that
-                # other scanwriters are also used (e.g. spec)
-                self.scanFile = next(
-                    (f for f in scanFile_env if f.endswith(tuple(NX_WRITER_EXT))),
-                    None,
-                )
-
-            if self.scanFile is None:
-                msg = ("No valid ScanFile found in ScanFile Sardana environment variable\n" +
-                       "Allowed extensions for NX writer are: {}\n".format(NX_WRITER_EXT) +
-                       "Data will not be written by Nexus writer service")
-                self.error(msg)
-                scanPath = None
-            else:
-                scanPath = os.path.join(self.scanDir, self.scanFile)
-
         except UnknownEnv:
-            msg = ("No ScanDir/ScanFile environment variable found\n" +
-                   "Data will not be written by Nexus writer service")
-            self.macro.error(msg)
-            self.scanDir = None
-            self.scanFile = None
-            scanPath = None
+            self.macro.error("No ScanDir environment variable found")
+            return scanPath
+        try:
+            nexus_writer_opts = self.macro.getMacroServer().get_env(NX_WRITER_ENV)
+        except UnknownEnv:
+            self.macro.error("No {} environment variable found. Creating it.".format(NX_WRITER_ENV))
+            nexus_writer_opts = {"save:": False, "singleNXFile:": False, "scanFile:": None}
+            self.macro.getMacroServer().set_env(NX_WRITER_ENV, nexus_writer_opts)
 
+        self.nexus_save = nexus_writer_opts.get('save', False)
+        self.nx_save_single_file = nexus_writer_opts.get('singleNXFile', False)
+        self.writerFile = nexus_writer_opts.get('scanFile', None)
+
+        if self.scanDir is None or self.writerFile is None:
+            return scanPath
+
+        scanPath = os.path.join(self.scanDir, self.writerFile)
         return scanPath
 
     def file_info(self, singleFile=True):
@@ -195,7 +183,9 @@ class RedisBlissRecorder(DataRecorder):
         if not self.nexus_save:
             return None, {}, None
 
-        collection = os.path.splitext(self.scanFile)[0]
+        collection, ext = os.path.splitext(self.writerFile)
+        if not ext:
+            ext = DEFAULT_NX_EXT
         exp_folder = self.scanDir
         beamline = self.scan.beamline
         proposal = self.scan.proposal
@@ -203,7 +193,7 @@ class RedisBlissRecorder(DataRecorder):
 
         if singleFile:
             dataset_file = os.path.join(
-                self.scanDir, "{}.h5".format(collection))
+                self.scanDir, "{}{}".format(collection, ext))
             images_path = os.path.join(
                 self.scanDir, "scan{:04d}".format(self.scan.number))
             masterfiles = {}
@@ -299,10 +289,26 @@ class RedisBlissRecorder(DataRecorder):
             ##################################
             "user_name": os.getlogin(),  # tangosys?
         }
-        # Add a default curve plot
-        scan_info["plots"].append(
-            {"kind": "curve-plot", "items": [{"kind": "curve", "x": "epoch"}]}
-        )
+        
+        # WiP
+        # for elem in ddesc_dict.items():
+        #     try:
+        #         plot_type = elem[1].get("plot_type", 0)
+        #         plot_axes = elem[1].get("plot_axes", [])
+        #         name = elem[1].get("label", "")
+        #         axes = []
+        #         if plot_type == 1:
+        #             for axis in plot_axes:
+        #                 if axis == "<idx>":
+        #                     axis == "point_nb" 
+        #                 axes.append({"kind": "curve", "x": axis, "y": name})
+        #             scan_info["plots"].append(
+        #                 {"kind": "curve-plot", "name": name, "items": axes})
+        #         elif plot_type == 2:
+        #             self.info("Image plot not implemented yet")
+        #     except IndexError:
+        #         continue
+
         validate_scan_info(scan_info)
         return scan_info
 
