@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="sardana-redis",
-    version="0.3.0",
+    version="0.4.0",
     description="Sardana BlissData 1.0 Redis Recorder",
     author="Oriol Vallcorba",
     author_email="ovallcorba@cells.es",
