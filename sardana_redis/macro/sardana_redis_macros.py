@@ -8,12 +8,14 @@ Beamline: {beamline}
 Experiment Identifier: {exp_id}
 Experiment Description: {exp_desc}
 Proposal ID: {proposal_id}
+Session Name: {session}
 Safety info: {safety_info}
 Experimental team: {exp_team}
 """
 
 NX_WRITER_OPTS_TEMPLATE = """\
 ScanFile: {scanFile}
+Name: {data_writer}
 Save: {save}
 SingleNXFile: {singleNXFile}
 """
@@ -31,6 +33,7 @@ class NexusWriterOptions:
             self.macro.info('Creating....')
             self.nexus_writer_opts = {
                 'scanFile': "",
+                'data_writer': "nexus",
                 'save': False,
                 'singleNXFile': False,
             }
@@ -56,6 +59,17 @@ class NexusWriterOptions:
     def scanFile(self, scanfile):
         self._load_env()
         self.nexus_writer_opts['scanFile'] = scanfile
+        self._save_env()
+
+    @property
+    def data_writer(self):
+        self._load_env()
+        return self.nexus_writer_opts['data_writer']
+
+    @data_writer.setter
+    def data_writer(self, writer_name):
+        self._load_env()
+        self.nexus_writer_opts['data_writer'] = writer_name
         self._save_env()
 
     @property
@@ -98,6 +112,7 @@ class NexusExperimentInfo:
                 'proposal_id': 000000000,
                 'exp_team': [],
                 'safety_info': '',
+                'session': "test_session",
             }
             self._save_env()
 
@@ -177,6 +192,17 @@ class NexusExperimentInfo:
         self.nexus_info['safety_info'] = safety_info
         self._save_env()
 
+    @property
+    def session(self):
+        self._load_env()
+        return self.nexus_info['session']
+
+    @session.setter
+    def session(self, session_name):
+        self._load_env()
+        self.nexus_info['session'] = session_name
+        self._save_env()
+
 
 @macro()
 def nexus_writer_opts(self):
@@ -200,6 +226,14 @@ def nexus_writer_scanfile(self, scanFile):
     nxopts = NexusWriterOptions(self)
     if scanFile is not None:
         nxopts.scanFile = scanFile
+    self.execMacro("nexus_writer_opts")
+
+
+@macro([["data_writer_name", Type.String, Optional, "Data writer Name for the Nexus Writer Service"]])
+def nexus_writer_name(self, data_writer_name):
+    nxopts = NexusWriterOptions(self)
+    if data_writer_name is not None:
+        nxopts.data_writer = data_writer_name
     self.execMacro("nexus_writer_opts")
 
 
@@ -231,8 +265,16 @@ def nexus_proposal_info(self, proposalId, experimentId, experimentDesc):
     self.execMacro("nexus_experiment_info")
 
 
+@macro([["session_name", Type.String, Optional, "Session name"]])
+def nexus_session_name(self, session_name):
+    nxinfo = NexusExperimentInfo(self)
+    if session_name is not None:
+        nxinfo.session = session_name
+    self.execMacro("nexus_experiment_info")
+
+
 @macro([["safetyinfo", Type.String, Optional, "Experiment ID"]])
-def nexus_safey_info(self, safetyinfo):
+def nexus_safety_info(self, safetyinfo):
     nxinfo = NexusExperimentInfo(self)
     if safetyinfo is not None:
         nxinfo.safety_info = safetyinfo

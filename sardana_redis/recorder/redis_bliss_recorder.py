@@ -81,13 +81,16 @@ class RedisBlissRecorder(DataRecorder):
         if not self.nexus_save:
             self.macro.info("Nexus writer saving is disabled, check {}".format(NX_WRITER_ENV))
 
-        scanID = self.macro.getMacroServer().get_env("ScanID")
+        scanID = self.macro.getMacroServer().get_env("ScanID") + 1
 
         # Get some info about proposalnr, user, dataset, etc.. from env
         try:
             info_env = self.macro.getMacroServer().get_env(NX_EXP_INFO_ENV)
-            proposal = info_env['proposal_id']
-            beamline = info_env['beamline']
+            proposal = info_env.get('proposal_id', '')
+            beamline = info_env.get('beamline', '')
+            exp_id = info_env.get('exp_id', '')
+            exp_team = info_env.get('exp_team', [])
+            safety_info = info_env.get('safety_info', '')
         except (UnknownEnv, KeyError):
             self.macro.warning(
                 "{} Sardana environment variable not found".format(NX_EXP_INFO_ENV))
@@ -97,7 +100,7 @@ class RedisBlissRecorder(DataRecorder):
             "name": self.macro.name,
             "number": scanID,
             "data_policy": "no_policy",
-            "session": "test_session",
+            "session": self.session,
             "path": scanPath,
             "proposal": proposal,
             "beamline": beamline,
@@ -109,6 +112,7 @@ class RedisBlissRecorder(DataRecorder):
         # nx writer needs the name when createing scan
         self.scan = data_store.create_scan(
             scan_id, info={"name": self.macro.name})
+        self.macro.debug("Scan KEY {}".format(self.scan.key))
 
     def checkWriters(self):
         """Check the status of Redis writers defined in Sardana env variable"""
@@ -159,7 +163,8 @@ class RedisBlissRecorder(DataRecorder):
         self.nexus_save = nexus_writer_opts.get('save', False)
         self.nx_save_single_file = nexus_writer_opts.get('singleNXFile', False)
         self.writerFile = nexus_writer_opts.get('scanFile', None)
-
+        self.session = nexus_writer_opts.get('session', 'test_session')
+        
         if self.scanDir is None or self.writerFile is None:
             return scanPath
 
@@ -283,7 +288,6 @@ class RedisBlissRecorder(DataRecorder):
             "instrument": {},
             "snapshot": snap_dict,
             "datadesc": ddesc_dict,
-            "definition": "NXmonopd",
             ##################################
             # Mandatory by the schema
             ##################################
