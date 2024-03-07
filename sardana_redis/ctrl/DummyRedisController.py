@@ -16,6 +16,15 @@ class DummyRedisController(DummyCounterTimerController):
                          DefaultValue:  "redis://localhost:6379"},
         }
 
+    ctrl_extra_attributes = \
+        {
+            "LastScanKEY": {
+                Type: str,
+                Description: "Last Scan Redis Key",
+            },
+        }
+    DummyCounterTimerController.ctrl_attributes.update(ctrl_extra_attributes)
+    
     def __init__(self, inst, props, *args, **kwargs):
         DummyCounterTimerController.__init__(
             self, inst, props, *args, **kwargs)
@@ -35,6 +44,9 @@ class DummyRedisController(DummyCounterTimerController):
         self._scanStarted = False
         self._totalPoints = 0
         self._pointsPerChan = {}
+
+    def getLastScanKEY(self):
+        return self._key
 
     def StateOne(self, axis):
         self._log.debug('StateOne(%d): entering...' % axis)
