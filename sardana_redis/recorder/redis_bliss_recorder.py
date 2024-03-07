@@ -293,25 +293,27 @@ class RedisBlissRecorder(DataRecorder):
             ##################################
             "user_name": os.getlogin(),  # tangosys?
         }
-        
-        # WiP
-        # for elem in ddesc_dict.items():
-        #     try:
-        #         plot_type = elem[1].get("plot_type", 0)
-        #         plot_axes = elem[1].get("plot_axes", [])
-        #         name = elem[1].get("label", "")
-        #         axes = []
-        #         if plot_type == 1:
-        #             for axis in plot_axes:
-        #                 if axis == "<idx>":
-        #                     axis == "point_nb" 
-        #                 axes.append({"kind": "curve", "x": axis, "y": name})
-        #             scan_info["plots"].append(
-        #                 {"kind": "curve-plot", "name": name, "items": axes})
-        #         elif plot_type == 2:
-        #             self.info("Image plot not implemented yet")
-        #     except IndexError:
-        #         continue
+
+        scan_info["plots"].append({"kind": "curve-plot"})
+
+        # Add curves selected in measurement group for plotting
+        for elem in ddesc_dict.items():
+            try:
+                plot_type = elem[1].get("plot_type", 0)
+                plot_axes = elem[1].get("plot_axes", [])
+                name = elem[1].get("label", "")
+                axes = []
+                if plot_type == 1:
+                    for axis in plot_axes:
+                        if "<idx>" in axis:
+                            axis = "#Pt No"
+                        axes.append({"kind": "curve", "x": axis, "y": name})
+                    scan_info["plots"].append(
+                        {"kind": "curve-plot", "name": name, "items": axes})
+                elif plot_type == 2:
+                    self.info("Image plot not implemented yet")
+            except IndexError:
+                continue
 
         validate_scan_info(scan_info)
         return scan_info
