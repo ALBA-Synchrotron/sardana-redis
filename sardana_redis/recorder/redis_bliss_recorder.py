@@ -9,6 +9,7 @@ import tango
 import datetime
 import h5py
 import typing
+import getpass
 
 
 NX_EXP_INFO_ENV = "NexusExperimentInfo"
@@ -291,7 +292,7 @@ class RedisBlissRecorder(DataRecorder):
             ##################################
             # Mandatory by the schema
             ##################################
-            "user_name": os.getlogin(),  # tangosys?
+            "user_name": getpass.getuser(),  # tangosys?
         }
 
         scan_info["plots"].append({"kind": "curve-plot"})
