@@ -3,13 +3,13 @@ from sardana.macroserver.msexception import UnknownEnv
 
 from sardana_redis.utils.sardana_redis_utils import get_data_store
 from blissdata.redis_engine.encoding.numeric import NumericStreamEncoder
+from blissdata.redis_engine.encoding.json import JsonStreamEncoder
 from blissdata.schemas.scan_info import ScanInfoDict, DeviceDict, ChainDict, ChannelDict
 import os
 import tango
 import datetime
 import h5py
 import typing
-import getpass
 
 
 NX_EXP_INFO_ENV = "NexusExperimentInfo"
@@ -62,8 +62,8 @@ class RedisBlissRecorder(DataRecorder):
         try:
             redisURL = self.macro.getMacroServer().get_env("RedisURL")
         except UnknownEnv:
-            self.macro.getMacroServer().set_env("RedisURL", "redis://localhost:6379")
-            redisURL = "redis://localhost:6379"
+            self.macro.getMacroServer().set_env("RedisURL", "redis://localhost:6380")
+            redisURL = "redis://localhost:6380"
 
         self.checkWriters()
         data_store = self.getRedisDataStore(redisURL)
@@ -165,7 +165,7 @@ class RedisBlissRecorder(DataRecorder):
         self.nx_save_single_file = nexus_writer_opts.get('singleNXFile', False)
         self.writerFile = nexus_writer_opts.get('scanFile', None)
         self.session = nexus_writer_opts.get('session', 'test_session')
-        
+
         if self.scanDir is None or self.writerFile is None:
             return scanPath
 
@@ -292,8 +292,14 @@ class RedisBlissRecorder(DataRecorder):
             ##################################
             # Mandatory by the schema
             ##################################
-            "user_name": getpass.getuser(),  # tangosys?
+            "user_name": "tango",
         }
+        try:
+            scan_info["user_name"] = os.getlogin()
+        except Exception:
+            import getpass
+            scan_info["user_name"] = getpass.getuser()
+
 
         scan_info["plots"].append({"kind": "curve-plot"})
 
@@ -377,6 +383,7 @@ class RedisBlissRecorder(DataRecorder):
     def prepare_streams(self, datadesc_list, header):
 
         # declare the streams in the scan (all Numeric in our test, TODO: consider references, 1d,...)
+        self.macro.info(datadesc_list)
         self.stream_list = {}
         for elem in datadesc_list:
             # if "point_nb" in elem["name"]:
@@ -387,11 +394,12 @@ class RedisBlissRecorder(DataRecorder):
             dtype = elem["dtype"]
             shape = elem["shape"]
             unit = ""
+           # self.macro.info(f"device name {name},label:{label},dtype:{dtype},header:{header}")
             if "unit" in elem:
                 unit = elem["unit"]
 
             device_type = "axis"
-            if "timestamp" in label:
+            if "timestamp" in name:
                 device_type = "timer"
             elif name in header["counters"]:
                 device_type = "counters"
@@ -402,12 +410,38 @@ class RedisBlissRecorder(DataRecorder):
                                                display_name=label)
 
             # Check dtype and shape for the type of stream to use
-            encoder = NumericStreamEncoder(dtype=dtype, shape=shape)
-            scalar_stream = self.scan.create_stream(
-                label, encoder, info={"unit": unit})
+            if 'value_ref_enabled' in elem:
+                if elem['value_ref_enabled']:
+                    encoder = JsonStreamEncoder()
+                    info = {
+                            "dim": 2,
+                            "format": "lima_v1",
+                            "dtype": "uint64",
+                            "shape": elem['shape'],
+                            "lima_info": {
+                        "protocol_version": 1,
+                        "server_url": "tango://haspp08bliss.desy.de:10000/p08bliss/limaccds/eiger2",
+                        "buffer_max_number": 5312,
+                        "acquisition_offset": 0,
+                        "frame_per_acquisition": 11,
+                        "file_offset": 0,
+                        "frame_per_file": 100,
+                        "file_format": "hdf5",
+                        "file_path": os.path.join("/tmp/limaeiger/scan_%04d.h5"),
+                        "data_path": "/entry_0000/esrf-id00a/lima_simulator/data",
+                         },
+                    }
+                    hdf5ref_stream = self.scan.create_stream(label, encoder, info=info)
+                    self.stream_list[name] = hdf5ref_stream
+                else:
+                    encoder = NumericStreamEncoder(dtype=dtype, shape=shape)
+                    scalar_stream = self.scan.create_stream(label, encoder, info={"unit": unit})
+                    self.stream_list[name] = scalar_stream
 
-            # keep the list of streams for writerecord
-            self.stream_list[name] = scalar_stream
+            else:
+                encoder = NumericStreamEncoder(dtype=dtype, shape=shape)
+                scalar_stream = self.scan.create_stream(label, encoder, info={"unit": unit})
+                self.stream_list[name] = scalar_stream
 
         # this does the trick to have a valid acquisition chain
         self.acq_chain["axis"] = ChainDict(
@@ -443,4 +477,7 @@ class RedisBlissRecorder(DataRecorder):
             except KeyError:
                 self.warning("Stream for {} not found".format(k))
                 continue
-            ch_stream.send(v)
+            if ch_stream.info.get('dim')==2:
+                ch_stream.send({"last_index": 1, "last_index_saved": 1})
+            else:
+                ch_stream.send(v)
