@@ -393,7 +393,6 @@ class RedisBlissRecorder(DataRecorder):
     def prepare_streams(self, datadesc_list, header):
 
         # declare the streams in the scan (all Numeric in our test, TODO: consider references, 1d,...)
-        self.macro.info(datadesc_list)
         self.stream_list = {}
         for elem in datadesc_list:
             # if "point_nb" in elem["name"]:
@@ -405,7 +404,6 @@ class RedisBlissRecorder(DataRecorder):
             shape = elem["shape"]
             ref = elem.get("value_ref_enabled", False)
             unit = ""
-           # self.macro.info(f"device name {name},label:{label},dtype:{dtype},header:{header}")
             if "unit" in elem:
                 unit = elem["unit"]
 
@@ -484,7 +482,4 @@ class RedisBlissRecorder(DataRecorder):
             except KeyError:
                 self.warning("Stream for {} not found".format(k.lower()))
                 continue
-            if ch_stream.info.get('dim')==2:
-                ch_stream.send({"last_index": 1, "last_index_saved": 1})
-            else:
-                ch_stream.send(v)
+            ch_stream.send(v)
