@@ -59,18 +59,23 @@ class RedisBlissRecorder(DataRecorder):
 
         self.macro = kwargs['macro']
 
+        if self.macro.getParentMacro():
+            self.macro = self.macro.getParentMacro()
+        
         try:
             redisURL = self.macro.getMacroServer().get_env("RedisURL")
         except UnknownEnv:
             self.macro.getMacroServer().set_env("RedisURL", "redis://localhost:6380")
             redisURL = "redis://localhost:6380"
 
-        self.checkWriters()
         data_store = self.getRedisDataStore(redisURL)
+        self.redisOK = True
         if data_store is None:
             self.macro.error(
                 "No Redis connection. Set RedisURL environment variable. Data will not be published")
+            self.redisOK = False
             return
+        self.checkWriters()
 
         scanPath = self.getNexusSavingOpts()
         if scanPath is None:
@@ -98,7 +103,7 @@ class RedisBlissRecorder(DataRecorder):
             proposal = "None"
 
         scan_id = {
-            "name": self.macro.name,
+            "name": self.macro.getName(),
             "number": scanID,
             "data_policy": "no_policy",
             "session": self.session,
@@ -112,7 +117,7 @@ class RedisBlissRecorder(DataRecorder):
         # create scan in the database
         # nx writer needs the name when createing scan
         self.scan = data_store.create_scan(
-            scan_id, info={"name": self.macro.name})
+            scan_id, info={"name": self.macro.getName()})
         self.macro.debug("Scan KEY {}".format(self.scan.key))
 
     def checkWriters(self):
@@ -233,8 +238,8 @@ class RedisBlissRecorder(DataRecorder):
 
     def scan_info(self, snap_dict, ddesc_dict):
         # Files like at the ESRF (not required to do it like this)
-        filename, masterfiles, images_path = self.file_info(
-            singleFile=self.nx_save_single_file)
+        # filename, masterfiles, images_path = self.file_info(
+        #     singleFile=self.nx_save_single_file)
 
         scan_info = {
             ##################################
@@ -264,8 +269,8 @@ class RedisBlissRecorder(DataRecorder):
             # NeXus writer metadata
             ##################################
             "save": self.nexus_save,
-            "filename": filename,
-            "images_path": images_path,
+            "filename": self.filename,
+            "images_path": self.images_path,
             "publisher": "test",
             "publisher_version": "1.0",
             "data_writer": "nexus",
@@ -281,7 +286,7 @@ class RedisBlissRecorder(DataRecorder):
             "nexuswriter": {
                 "devices": {},
                 "instrument_info": {"name": "alba-"+self.scan.beamline, "name@short_name": self.scan.beamline},
-                "masterfiles": masterfiles,
+                "masterfiles": self.masterfiles,
                 "technique": {},
             },
             "positioners": {},  # TODO decide how to fill this (from snapshot?)
@@ -326,7 +331,9 @@ class RedisBlissRecorder(DataRecorder):
         return scan_info
 
     def _startRecordList(self, recordlist):
-
+        if not self.redisOK:
+            return
+        
         header = dict(recordlist.getEnviron())
 
         # sanitize numpy.int64 types
@@ -368,6 +375,9 @@ class RedisBlissRecorder(DataRecorder):
         for elem in snapshot:
             snap_dict[elem["label"]] = elem
 
+        self.filename, self.masterfiles, self.images_path = self.file_info(
+            singleFile=self.nx_save_single_file)
+
         self.prepare_streams(datadesc_list, header)
 
         scan_info = self.scan_info(snap_dict, ddesc_dict)
@@ -393,6 +403,7 @@ class RedisBlissRecorder(DataRecorder):
             label = elem["label"]
             dtype = elem["dtype"]
             shape = elem["shape"]
+            ref = elem.get("value_ref_enabled", False)
             unit = ""
            # self.macro.info(f"device name {name},label:{label},dtype:{dtype},header:{header}")
             if "unit" in elem:
@@ -410,38 +421,28 @@ class RedisBlissRecorder(DataRecorder):
                                                display_name=label)
 
             # Check dtype and shape for the type of stream to use
-            if 'value_ref_enabled' in elem:
-                if elem['value_ref_enabled']:
-                    encoder = JsonStreamEncoder()
-                    info = {
-                            "dim": 2,
-                            "format": "lima_v1",
-                            "dtype": "uint64",
-                            "shape": elem['shape'],
-                            "lima_info": {
-                        "protocol_version": 1,
-                        "server_url": "tango://haspp08bliss.desy.de:10000/p08bliss/limaccds/eiger2",
-                        "buffer_max_number": 5312,
-                        "acquisition_offset": 0,
-                        "frame_per_acquisition": 11,
-                        "file_offset": 0,
-                        "frame_per_file": 100,
-                        "file_format": "hdf5",
-                        "file_path": os.path.join("/tmp/limaeiger/scan_%04d.h5"),
-                        "data_path": "/entry_0000/esrf-id00a/lima_simulator/data",
-                         },
-                    }
-                    hdf5ref_stream = self.scan.create_stream(label, encoder, info=info)
-                    self.stream_list[name] = hdf5ref_stream
-                else:
-                    encoder = NumericStreamEncoder(dtype=dtype, shape=shape)
-                    scalar_stream = self.scan.create_stream(label, encoder, info={"unit": unit})
-                    self.stream_list[name] = scalar_stream
+            if ref:
+                # Its a reference to 1D or 2D data (eg Lima2Dctrl)
+                encoder = JsonStreamEncoder()
+                info = {
+                    "dim": 2,
+                    "format": "sardana_ref",
+                    "dtype": dtype,
+                    "shape": shape,
+                    "file_path": self.filename,
+                    "data_path": self.images_path,
+                }
 
             else:
+                # scalar or 1D data not referenced (NumericStream)
                 encoder = NumericStreamEncoder(dtype=dtype, shape=shape)
-                scalar_stream = self.scan.create_stream(label, encoder, info={"unit": unit})
-                self.stream_list[name] = scalar_stream
+                info = {"unit": unit}
+
+            elem_stream = self.scan.create_stream(
+                label, encoder, info=info)
+
+            # keep the list of streams for writerecord
+            self.stream_list[name.lower()] = elem_stream
 
         # this does the trick to have a valid acquisition chain
         self.acq_chain["axis"] = ChainDict(
@@ -453,6 +454,8 @@ class RedisBlissRecorder(DataRecorder):
             master={})
 
     def _endRecordList(self, recordlist):
+        if not self.redisOK:
+            return        
         for stream in self.stream_list.values():
             try:
                 stream.seal()
@@ -470,12 +473,16 @@ class RedisBlissRecorder(DataRecorder):
         self.scan.close()  # upload final metadata
 
     def _writeRecord(self, record):
+        if not self.redisOK:
+            return
         ctdict = record.data.items()
         for k, v in ctdict:
             try:
-                ch_stream = self.stream_list[k]
+                ch_stream = self.stream_list[k.lower()]
+                if isinstance(v, str):
+                    v = {"filename": v}
             except KeyError:
-                self.warning("Stream for {} not found".format(k))
+                self.warning("Stream for {} not found".format(k.lower()))
                 continue
             if ch_stream.info.get('dim')==2:
                 ch_stream.send({"last_index": 1, "last_index_saved": 1})
