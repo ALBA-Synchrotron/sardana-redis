@@ -59,18 +59,23 @@ class RedisBlissRecorder(DataRecorder):
 
         self.macro = kwargs['macro']
 
+        if self.macro.getParentMacro():
+            self.macro = self.macro.getParentMacro()
+        
         try:
             redisURL = self.macro.getMacroServer().get_env("RedisURL")
         except UnknownEnv:
             self.macro.getMacroServer().set_env("RedisURL", "redis://localhost:6379")
             redisURL = "redis://localhost:6379"
 
-        self.checkWriters()
         data_store = self.getRedisDataStore(redisURL)
+        self.redisOK = True
         if data_store is None:
             self.macro.error(
                 "No Redis connection. Set RedisURL environment variable. Data will not be published")
+            self.redisOK = False
             return
+        self.checkWriters()
 
         scanPath = self.getNexusSavingOpts()
         if scanPath is None:
@@ -98,7 +103,7 @@ class RedisBlissRecorder(DataRecorder):
             proposal = "None"
 
         scan_id = {
-            "name": self.macro.name,
+            "name": self.macro.getName(),
             "number": scanID,
             "data_policy": "no_policy",
             "session": self.session,
@@ -112,7 +117,7 @@ class RedisBlissRecorder(DataRecorder):
         # create scan in the database
         # nx writer needs the name when createing scan
         self.scan = data_store.create_scan(
-            scan_id, info={"name": self.macro.name})
+            scan_id, info={"name": self.macro.getName()})
         self.macro.debug("Scan KEY {}".format(self.scan.key))
 
     def checkWriters(self):
@@ -233,8 +238,8 @@ class RedisBlissRecorder(DataRecorder):
 
     def scan_info(self, snap_dict, ddesc_dict):
         # Files like at the ESRF (not required to do it like this)
-        filename, masterfiles, images_path = self.file_info(
-            singleFile=self.nx_save_single_file)
+        # filename, masterfiles, images_path = self.file_info(
+        #     singleFile=self.nx_save_single_file)
 
         scan_info = {
             ##################################
@@ -264,8 +269,8 @@ class RedisBlissRecorder(DataRecorder):
             # NeXus writer metadata
             ##################################
             "save": self.nexus_save,
-            "filename": filename,
-            "images_path": images_path,
+            "filename": self.filename,
+            "images_path": self.images_path,
             "publisher": "test",
             "publisher_version": "1.0",
             "data_writer": "nexus",
@@ -281,7 +286,7 @@ class RedisBlissRecorder(DataRecorder):
             "nexuswriter": {
                 "devices": {},
                 "instrument_info": {"name": "alba-"+self.scan.beamline, "name@short_name": self.scan.beamline},
-                "masterfiles": masterfiles,
+                "masterfiles": self.masterfiles,
                 "technique": {},
             },
             "positioners": {},  # TODO decide how to fill this (from snapshot?)
@@ -320,7 +325,9 @@ class RedisBlissRecorder(DataRecorder):
         return scan_info
 
     def _startRecordList(self, recordlist):
-
+        if not self.redisOK:
+            return
+        
         header = dict(recordlist.getEnviron())
 
         # sanitize numpy.int64 types
@@ -361,6 +368,9 @@ class RedisBlissRecorder(DataRecorder):
             ddesc_dict[elem["label"]] = elem
         for elem in snapshot:
             snap_dict[elem["label"]] = elem
+
+        self.filename, self.masterfiles, self.images_path = self.file_info(
+            singleFile=self.nx_save_single_file)
 
         self.prepare_streams(datadesc_list, header)
 
@@ -419,6 +429,8 @@ class RedisBlissRecorder(DataRecorder):
             master={})
 
     def _endRecordList(self, recordlist):
+        if not self.redisOK:
+            return        
         for stream in self.stream_list.values():
             try:
                 stream.seal()
@@ -436,6 +448,8 @@ class RedisBlissRecorder(DataRecorder):
         self.scan.close()  # upload final metadata
 
     def _writeRecord(self, record):
+        if not self.redisOK:
+            return
         ctdict = record.data.items()
         for k, v in ctdict:
             try:
