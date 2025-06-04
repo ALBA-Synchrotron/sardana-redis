@@ -10,7 +10,6 @@ import tango
 import datetime
 import h5py
 import typing
-import getpass
 
 
 NX_EXP_INFO_ENV = "NexusExperimentInfo"
@@ -66,8 +65,8 @@ class RedisBlissRecorder(DataRecorder):
         try:
             redisURL = self.macro.getMacroServer().get_env("RedisURL")
         except UnknownEnv:
-            self.macro.getMacroServer().set_env("RedisURL", "redis://localhost:6379")
-            redisURL = "redis://localhost:6379"
+            self.macro.getMacroServer().set_env("RedisURL", "redis://localhost:6380")
+            redisURL = "redis://localhost:6380"
 
         data_store = self.getRedisDataStore(redisURL)
         self.redisOK = True
@@ -171,7 +170,7 @@ class RedisBlissRecorder(DataRecorder):
         self.nx_save_single_file = nexus_writer_opts.get('singleNXFile', False)
         self.writerFile = nexus_writer_opts.get('scanFile', None)
         self.session = nexus_writer_opts.get('session', 'test_session')
-        
+
         if self.scanDir is None or self.writerFile is None:
             return scanPath
 
@@ -298,8 +297,14 @@ class RedisBlissRecorder(DataRecorder):
             ##################################
             # Mandatory by the schema
             ##################################
-            "user_name": getpass.getuser(),  # tangosys?
+            "user_name": "tango",
         }
+        try:
+            scan_info["user_name"] = os.getlogin()
+        except Exception:
+            import getpass
+            scan_info["user_name"] = getpass.getuser()
+
 
         scan_info["plots"].append({"kind": "curve-plot"})
 
@@ -403,7 +408,7 @@ class RedisBlissRecorder(DataRecorder):
                 unit = elem["unit"]
 
             device_type = "axis"
-            if "timestamp" in label:
+            if "timestamp" in name:
                 device_type = "timer"
             elif name in header["counters"]:
                 device_type = "counters"
