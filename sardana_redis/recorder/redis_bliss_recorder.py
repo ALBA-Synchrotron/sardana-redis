@@ -3,6 +3,7 @@ from sardana.macroserver.msexception import UnknownEnv
 
 from sardana_redis.utils.sardana_redis_utils import get_data_store
 from blissdata.redis_engine.encoding.numeric import NumericStreamEncoder
+from blissdata.redis_engine.encoding.json import JsonStreamEncoder
 from blissdata.schemas.scan_info import ScanInfoDict, DeviceDict, ChainDict, ChannelDict
 import os
 import tango
@@ -396,6 +397,7 @@ class RedisBlissRecorder(DataRecorder):
             label = elem["label"]
             dtype = elem["dtype"]
             shape = elem["shape"]
+            ref = elem.get("value_ref_enabled", False)
             unit = ""
             if "unit" in elem:
                 unit = elem["unit"]
@@ -412,12 +414,28 @@ class RedisBlissRecorder(DataRecorder):
                                                display_name=label)
 
             # Check dtype and shape for the type of stream to use
-            encoder = NumericStreamEncoder(dtype=dtype, shape=shape)
-            scalar_stream = self.scan.create_stream(
-                label, encoder, info={"unit": unit})
+            if ref:
+                # Its a reference to 1D or 2D data (eg Lima2Dctrl)
+                encoder = JsonStreamEncoder()
+                info = {
+                    "dim": 2,
+                    "format": "sardana_ref",
+                    "dtype": dtype,
+                    "shape": shape,
+                    "file_path": self.filename,
+                    "data_path": self.images_path,
+                }
+
+            else:
+                # scalar or 1D data not referenced (NumericStream)
+                encoder = NumericStreamEncoder(dtype=dtype, shape=shape)
+                info = {"unit": unit}
+
+            elem_stream = self.scan.create_stream(
+                label, encoder, info=info)
 
             # keep the list of streams for writerecord
-            self.stream_list[name] = scalar_stream
+            self.stream_list[name.lower()] = elem_stream
 
         # this does the trick to have a valid acquisition chain
         self.acq_chain["axis"] = ChainDict(
@@ -453,8 +471,10 @@ class RedisBlissRecorder(DataRecorder):
         ctdict = record.data.items()
         for k, v in ctdict:
             try:
-                ch_stream = self.stream_list[k]
+                ch_stream = self.stream_list[k.lower()]
+                if isinstance(v, str):
+                    v = {"filename": v}
             except KeyError:
-                self.warning("Stream for {} not found".format(k))
+                self.warning("Stream for {} not found".format(k.lower()))
                 continue
             ch_stream.send(v)
